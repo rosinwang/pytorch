@@ -159,8 +159,9 @@ struct GlooCache {
       std::memcpy(input_buffer, t.data(), tensor_bytes);
 #ifdef WITH_CUDA
     } else if (t_dev == DeviceType::CUDA) {
-      THCudaCheck(cudaMemcpy(input_buffer, t.data(), tensor_bytes, cudaMemcpyDeviceToDevice));
-      THCudaCheck(cudaDeviceSynchronize()); // TODO: we probably want to have a more fine-grained sync
+      auto stream = THCState_getCurrentStream(state);
+      THCudaCheck(cudaMemcpyAsync(input_buffer, t.data(), tensor_bytes,
+                                  cudaMemcpyDeviceToDevice, stream));
 #endif
     } else {
       throw std::runtime_error("unsupported device in memcpy_input");
@@ -176,7 +177,9 @@ struct GlooCache {
       std::memcpy(t.data(), output_buffer, tensor_bytes);
 #ifdef WITH_CUDA
     } else if (t_dev == DeviceType::CUDA) {
-      THCudaCheck(cudaMemcpy(t.data(), output_buffer, tensor_bytes, cudaMemcpyDeviceToDevice));
+      auto stream = THCState_getCurrentStream(state);
+      THCudaCheck(cudaMemcpyAsync(t.data(), output_buffer, tensor_bytes,
+                                  cudaMemcpyDeviceToDevice, stream));
 #endif
     } else {
       throw std::runtime_error("unsupported device in memcpy_input");
@@ -292,10 +295,12 @@ struct algorithm_spec<CollectiveType::ALL_REDUCE, T> {
       if (op != THDReduceSUM) {
         throw std::runtime_error("Gloo backend only supports sum op for CUDA all reduce");
       }
+      auto stream = THCState_getCurrentStream(state);
       algo = std::make_shared<::gloo::CudaAllreduceRing<T>>(
         context,
         std::initializer_list<T*>{reinterpret_cast<T*>(input_buffer.get())},
-        count); // TODO: figure out what to do with streams
+        count,
+        std::vector<cudaStream_t>{stream});
 #endif
     } else {
       throw std::runtime_error("unsupported tensor device in Gloo allReduce");
@@ -336,11 +341,14 @@ struct algorithm_spec<CollectiveType::BROADCAST, T> {
         src_rank);
 #ifdef WITH_CUDA
     } else if (device == DeviceType::CUDA) {
+      auto stream = THCState_getCurrentStream(state);
       algo = std::make_shared<::gloo::CudaBroadcastOneToAll<T>>(
         context,
         std::initializer_list<T*>{reinterpret_cast<T*>(input_buffer.get())},
         count,
-        src_rank); // TODO: figure out what to do with streams
+        src_rank,
+        0,
+        std::vector<cudaStream_t>{stream});
 #endif
     } else {
       throw std::runtime_error("unsupported tensor device in Gloo broadcast");
