@@ -250,7 +250,7 @@ void DataChannelGloo::broadcast(thpp::Tensor& data, rank_type src_rank,
 }
 
 
-void DataChannelGloo::send(const Scalar& data, rank_type dst_rank) {
+void DataChannelGloo::send(Scalar& data, rank_type dst_rank) {
   throw std::runtime_error("DataChannelGloo does not support send");
 }
 
