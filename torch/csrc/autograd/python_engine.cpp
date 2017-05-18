@@ -215,7 +215,7 @@ PyObject *THPEngine_run_backward(THPEngine *self, PyObject *args, PyObject *kwar
 }
 
 PyObject* THPEngine_queue_callback(PyObject *self, PyObject *_callback) {
-  std::shared_ptr<PyObject> callback(_callback, [](PyObject *obj) { Py_DECREF(obj); });
+  std::shared_ptr<PyObject> callback(_callback, [](PyObject *obj) { AutoGIL gil; Py_DECREF(obj); });
   Py_INCREF(_callback);
   engine.queue_callback([callback]() {
     AutoGIL gil;

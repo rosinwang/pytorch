@@ -307,11 +307,19 @@ auto Engine::find_roots(const function_list& input_roots,
 }
 
 struct ClearCallbacks {
-  ClearCallbacks(std::vector<std::function<void()>> callbacks)
-    : callbacks(callbacks) { callbacks.clear(); }
-  ~ClearCallbacks() { callbacks.clear(); }
+  ClearCallbacks(std::vector<std::function<void()>>& callbacks,
+                 std::mutex &callbacks_lock)
+    : callbacks(callbacks)
+    , callbacks_lock(callbacks_lock) { clear(); }
+  ~ClearCallbacks() { clear(); }
+
+  void clear() {
+    std::lock_guard<std::mutex> lock(callbacks_lock);
+    callbacks.clear();
+  }
 
   std::vector<std::function<void()>>& callbacks;
+  std::mutex& callbacks_lock;
 };
 
 auto Engine::execute(const function_list& input_roots,
@@ -320,7 +328,7 @@ auto Engine::execute(const function_list& input_roots,
                      const callback_map& callbacks) -> void {
   std::call_once(start_threads_flag, &Engine::start_threads, this);
   // Callbacks are only valid for the duration of this run and should always be cleared
-  ClearCallbacks _cb_guard(post_callbacks);
+  ClearCallbacks _cb_guard(post_callbacks, post_callbacks_lock);
 
   GraphTask graph_task(keep_graph, callbacks);
   std::unique_lock<std::mutex> lock(graph_task.mutex);
